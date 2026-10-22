@@ -41,7 +41,7 @@ if (cam?.length === 6 && cam.every(Number.isFinite)) {
 }
 
 const wParam = params.get("wetter");
-const weather = new Weather(scene, sun, sky, camera, wParam === null ? undefined : Number(wParam));
+const weather = new Weather(scene, sun, sky, camera, Number.isInteger(Number(wParam)) && wParam ? Number(wParam) : undefined);
 
 const status = document.getElementById("status")!;
 

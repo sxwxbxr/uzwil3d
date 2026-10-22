@@ -43,7 +43,12 @@ export function sunPosition(date: Date): { dir: THREE.Vector3; elevation: number
 }
 
 const NOISE = /* glsl */ `
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+// Hash ohne sin(): bleibt auch bei grossen Argumenten (lange Laufzeit, Mobil-GPUs) stabil
+float hash(vec2 p) {
+  vec3 q = fract(vec3(p.xyx) * 0.1031);
+  q += dot(q, q.yzx + 33.33);
+  return fract((q.x + q.y) * q.z);
+}
 float noise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
   f = f * f * (3.0 - 2.0 * f);
@@ -220,12 +225,14 @@ export class Weather {
 
   private async fetch() {
     try {
-      const r = await fetch(API);
+      const r = await fetch(API, { signal: AbortSignal.timeout(15000) });
       if (!r.ok) throw new Error("HTTP " + r.status);
-      this.set((await r.json()).current);
+      const c = (await r.json()).current;
+      if (typeof c?.weather_code !== "number") throw new Error("keine Wetterdaten");
+      this.set(c);
     } catch (e) {
       console.warn("Wetter:", e);
-      this.label.textContent = "Wetter nicht verfügbar";
+      if (!this.current) this.label.textContent = "Wetter nicht verfügbar"; // sonst bleiben die letzten Daten stehen
     }
     setTimeout(() => this.fetch(), 10 * 60 * 1000);
   }
@@ -249,8 +256,10 @@ export class Weather {
     this.cover = lerp(this.cover, targetCover, k);
     this.dark = lerp(this.dark, code >= 95 ? 0.7 : wet ? 0.4 : fog ? 0.2 : 0, k);
     this.intensity = lerp(this.intensity, wet ? Math.min(1, 0.3 + (c?.precipitation ?? 0) / 3) : 0, k);
-    this.fogNear = lerp(this.fogNear, fog ? 50 : wet ? 2000 : 8000, k);
-    this.fogFar = lerp(this.fogFar, fog ? 1600 : wet ? 9000 : 20000, k);
+    // Nebel soll auch aus der Startansicht (grosse Höhe) noch Gelände übrig lassen
+    const fogFar = Math.max(1600, this.camera.position.y * 2.5);
+    this.fogNear = lerp(this.fogNear, fog ? fogFar * 0.03 : wet ? 2000 : 8000, k);
+    this.fogFar = lerp(this.fogFar, fog ? fogFar : wet ? 9000 : 20000, k);
 
     const s = sunPosition(now);
     const sunDir = night ? new THREE.Vector3(0.3, -0.5, 0.8).normalize() : s.dir;
@@ -293,14 +302,14 @@ export class Weather {
 
     for (const [obj, active] of [[this.rain, !snow], [this.snow, snow]] as const) {
       const m = (obj as THREE.Points).material as THREE.ShaderMaterial;
-      obj.visible = active && this.intensity > 0.02;
-      m.uniforms.uTime.value = this.time % 1000;
+      m.uniforms.uTime.value = this.time;
       m.uniforms.uIntensity.value = this.intensity;
       m.uniforms.uCam.value.copy(this.camera.position);
       m.uniforms.uWind.value.set(wx, wz);
       m.uniforms.uColor.value.setScalar(0.25 + 0.75 * bright).multiply(snow ? col(0xffffff) : col(0xc0ccdc));
       // Niederschlag nur nahe am Boden zeigen, aus der Höhe übernehmen Himmel und Nebel
       m.uniforms.uAlpha.value = 1 - smooth(this.camera.position.y, 1100, 2300);
+      obj.visible = active && this.intensity > 0.02 && m.uniforms.uAlpha.value > 0.01;
     }
   }
 }
