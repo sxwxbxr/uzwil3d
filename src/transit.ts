@@ -89,7 +89,8 @@ export async function loadTransit(m: Manifest, terrain: Terrain, url: string) {
   /** Fahrzeuge für einen Zeitpunkt setzen, liefert die Anzahl aktiver Fahrten. */
   function update(now: Date): number {
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const sec = (now.getTime() - midnight) / 1000;
+    // GTFS-Zeiten sind lokale Uhrzeit, auch an Tagen mit Zeitumstellung.
+    const sec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds() + now.getMilliseconds() / 1000;
     // Ausserhalb des Datenfensters gleichen Wochentag im Fenster verwenden.
     let day = Math.round((midnight - startMs) / (DAY * 1000));
     if (day < 0 || day >= t.days) day = ((day % 7) + 7) % 7;
