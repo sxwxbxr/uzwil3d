@@ -10,6 +10,7 @@ from uzwil3d_pipeline.area import build_area  # noqa: E402
 from uzwil3d_pipeline.buildings import build_buildings  # noqa: E402
 from uzwil3d_pipeline.common import ROOT, load_config, write_json  # noqa: E402
 from uzwil3d_pipeline.terrain import build_terrain  # noqa: E402
+from uzwil3d_pipeline.transit import build_transit  # noqa: E402
 
 
 def main() -> None:
@@ -30,6 +31,9 @@ def main() -> None:
     for t in terrain["tiles"]:
         t["buildings"] = buildings["tiles"].get((t["e"], t["n"]))
 
+    print("ÖV-Fahrplan")
+    transit = build_transit(cfg, area, out)
+
     write_json(
         out / "manifest.json",
         {
@@ -41,7 +45,8 @@ def main() -> None:
             **terrain,
             "buildings_scale": buildings["scale"],
             "buildings_count": buildings["count"],
-            "attribution": [f"swisstopo (swissBOUNDARIES3D, swissALTI3D, SWISSIMAGE, swissBUILDINGS3D 3.0 {buildings['year']})"],
+            **transit,
+            "attribution": [f"swisstopo (swissBOUNDARIES3D, swissALTI3D, SWISSIMAGE, swissBUILDINGS3D 3.0 {buildings['year']})", "opentransportdata.swiss (GTFS)"],
         },
     )
 

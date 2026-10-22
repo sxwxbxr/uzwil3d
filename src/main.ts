@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { MapControls } from "three/examples/jsm/controls/MapControls.js";
 import { loadBuildings } from "./buildings";
 import { Terrain, toScene, type Manifest } from "./terrain";
+import { loadTransit } from "./transit";
 
 const DATA_URL = import.meta.env.BASE_URL + "data/";
 
@@ -30,7 +31,8 @@ controls.maxDistance = 15000;
 controls.target.set(0, 150, 0);
 
 // Optionale Startansicht per URL: ?cam=x,y,z,zielX,zielY,zielZ (Szenen-Meter)
-const cam = new URLSearchParams(location.search).get("cam")?.split(",").map(Number);
+const params = new URLSearchParams(location.search);
+const cam = params.get("cam")?.split(",").map(Number);
 if (cam?.length === 6 && cam.every(Number.isFinite)) {
   camera.position.set(cam[0], cam[1], cam[2]);
   controls.target.set(cam[3], cam[4], cam[5]);
@@ -56,7 +58,23 @@ async function init() {
 
   status.textContent = `Gebäude werden geladen … (${manifest.buildings_count.toLocaleString("de-CH")})`;
   scene.add(await loadBuildings(manifest, DATA_URL));
+
+  status.textContent = "Fahrplan wird geladen …";
+  const transit = await loadTransit(manifest, terrain, DATA_URL + manifest.transit);
+  scene.add(transit.group);
   status.hidden = true;
+
+  // Simulierte Uhr, Startzeit per ?t=HH:MM (heute), sonst jetzt.
+  const clock = document.getElementById("clock")!;
+  const [hh, mm] = (params.get("t") ?? "").split(":").map(Number);
+  const offset = Number.isFinite(hh) && Number.isFinite(mm) ? new Date().setHours(hh, mm, 0, 0) - Date.now() : 0;
+  const tick = () => {
+    const now = new Date(Date.now() + offset);
+    const n = transit.update(now);
+    clock.textContent = `${now.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })} · ${n} Fahrzeuge unterwegs`;
+  };
+  tick();
+  setInterval(tick, 200);
 
   // Kamera nicht unter das Gelände fallen lassen.
   controls.addEventListener("change", () => {

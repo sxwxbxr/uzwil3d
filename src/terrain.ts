@@ -19,6 +19,7 @@ export interface Manifest {
   height_max: number;
   buildings_scale: number;
   buildings_count: number;
+  transit: string;
   tiles: TileInfo[];
   attribution: string[];
 }
