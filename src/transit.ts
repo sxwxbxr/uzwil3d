@@ -96,7 +96,6 @@ export async function loadTransit(m: Manifest, terrain: Terrain, url: string) {
   const quat = new THREE.Quaternion();
   const scale = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
-  const lookM = new THREE.Matrix4();
 
   /** Fahrzeuge für einen Zeitpunkt setzen, liefert die Anzahl aktiver Fahrten. */
   function update(now: Date): number {
@@ -123,10 +122,10 @@ export async function loadTransit(m: Manifest, terrain: Terrain, url: string) {
         if (!path) pos.lerpVectors(from, to, f);
         // Höhe am Punkt selbst, damit Abschnitte über den Geländerand nur draussen verschwinden
         pos.y = (terrain.heightAt(pos.x + m.origin_lv95[0], -pos.z + m.origin_lv95[1]) ?? NaN) + 1.5;
-        if (from.distanceToSquared(to) > 0.01) {
-          lookM.lookAt(to, from, up);
-          quat.setFromRotationMatrix(lookM);
-        }
+        // Richtung nur horizontal: Punkte ausserhalb haben y = NaN
+        const dx = to.x - from.x;
+        const dz = to.z - from.z;
+        if (dx * dx + dz * dz > 0.01) quat.setFromAxisAngle(up, Math.atan2(dx, dz));
         scale.set(rail ? 4 : 3, rail ? 4.5 : 3.5, rail ? 75 : 12);
         pos.y += scale.y / 2 + 1;
         if (n < MAX_VEHICLES && inside(pos)) {
