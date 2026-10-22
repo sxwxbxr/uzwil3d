@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from uzwil3d_pipeline.area import build_area  # noqa: E402
+from uzwil3d_pipeline.buildings import build_buildings  # noqa: E402
 from uzwil3d_pipeline.common import ROOT, load_config, write_json  # noqa: E402
 from uzwil3d_pipeline.terrain import build_terrain  # noqa: E402
 
@@ -24,6 +25,11 @@ def main() -> None:
     terrain = build_terrain(cfg, area, out)
     print(f"  {len(terrain['tiles'])} Kacheln, Höhe {terrain['height_min']:.1f}–{terrain['height_max']:.1f} m")
 
+    print("Gebäude")
+    buildings = build_buildings(cfg, area, terrain["height_min"], out)
+    for t in terrain["tiles"]:
+        t["buildings"] = buildings["tiles"].get((t["e"], t["n"]))
+
     write_json(
         out / "manifest.json",
         {
@@ -33,7 +39,9 @@ def main() -> None:
             "origin_lv95": area["origin_lv95"],
             "area": "area.geojson",
             **terrain,
-            "attribution": ["swisstopo (swissBOUNDARIES3D, swissALTI3D, SWISSIMAGE)"],
+            "buildings_scale": buildings["scale"],
+            "buildings_count": buildings["count"],
+            "attribution": [f"swisstopo (swissBOUNDARIES3D, swissALTI3D, SWISSIMAGE, swissBUILDINGS3D 3.0 {buildings['year']})"],
         },
     )
 
