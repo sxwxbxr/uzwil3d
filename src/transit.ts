@@ -7,6 +7,13 @@ interface Transit {
   stops: [string, number, number][];
   routes: [string, number][];
   trips: [number, string, number, [number, number, number][]][];
+  paths: Record<string, [number, number][]>;
+}
+
+interface Path {
+  pts: THREE.Vector3[];
+  /** kumulierte Länge bis pts[i] */
+  len: number[];
 }
 
 const DAY = 86400;
@@ -32,21 +39,35 @@ export async function loadTransit(m: Manifest, terrain: Terrain, url: string) {
   stopPos.forEach((p, i) => stopMesh.setMatrixAt(i, mat.makeTranslation(p.x, p.y + 3, p.z)));
   group.add(stopMesh);
 
-  // Linien als gerade Verbindung aufeinanderfolgender Halte.
-  // shortcut: GTFS der Schweiz hat keine shapes.txt, Strecken folgen nicht Strasse/Gleis; später mit swissTLM3D ersetzen.
-  const segments = { rail: new Set<string>(), bus: new Set<string>() };
-  for (const [route, , , stops] of t.trips) {
-    const set = isRail(t.routes[route][1]) ? segments.rail : segments.bus;
-    for (let i = 1; i < stops.length; i++) set.add(`${stops[i - 1][0]}-${stops[i][0]}`);
+  // Abschnitte zwischen zwei Halten folgen Strasse bzw. Gleis (swissTLM3D, in der Pipeline geroutet).
+  const paths = new Map<string, Path>();
+  const lines = { rail: [] as THREE.Vector3[], bus: [] as THREE.Vector3[] };
+  for (const [key, coords] of Object.entries(t.paths)) {
+    const pts = coords.map(([e, n]) => {
+      const [x, z] = toScene(m, e, n);
+      return new THREE.Vector3(x, (terrain.heightAt(e, n) ?? 0) + 1.5, z);
+    });
+    const len = [0];
+    for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + pts[i].distanceTo(pts[i - 1]));
+    paths.set(key, { pts, len });
+    const out = lines[key.startsWith("rail") ? "rail" : "bus"];
+    for (let i = 1; i < pts.length; i++) out.push(pts[i - 1], pts[i]);
   }
   for (const [kind, color] of [["rail", 0xd32f2f], ["bus", 0xffb300]] as const) {
-    const pts: THREE.Vector3[] = [];
-    for (const s of segments[kind]) {
-      const [a, b] = s.split("-").map(Number);
-      pts.push(stopPos[a], stopPos[b]);
-    }
-    group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color })));
+    group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(lines[kind]), new THREE.LineBasicMaterial({ color })));
   }
+
+  /** Punkt und Fahrtrichtung bei Anteil f eines Abschnitts. */
+  const along = (p: Path, f: number, out: THREE.Vector3): [THREE.Vector3, THREE.Vector3] => {
+    const d = f * p.len[p.len.length - 1];
+    let i = 1;
+    while (i < p.pts.length - 1 && p.len[i] < d) i++;
+    const a = p.pts[i - 1];
+    const b = p.pts[i];
+    const seg = p.len[i] - p.len[i - 1];
+    out.lerpVectors(a, b, seg > 0 ? (d - p.len[i - 1]) / seg : 0);
+    return [a, b];
+  };
 
   const vehicles = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1, 1, 1),
@@ -82,12 +103,14 @@ export async function loadTransit(m: Manifest, terrain: Terrain, url: string) {
         const [a, , depA] = stops[i - 1];
         const [b, arrB] = stops[i];
         const f = arrB > depA ? Math.min(1, Math.max(0, (s - depA) / (arrB - depA))) : 1;
-        pos.lerpVectors(stopPos[a], stopPos[b], f);
-        if (stopPos[a].distanceToSquared(stopPos[b]) > 1) {
-          lookM.lookAt(stopPos[b], stopPos[a], up);
+        const rail = isRail(t.routes[route][1]);
+        const path = paths.get(`${rail ? "rail" : "bus"}:${a}-${b}`);
+        const [from, to] = path ? along(path, f, pos) : [stopPos[a], stopPos[b]];
+        if (!path) pos.lerpVectors(from, to, f);
+        if (from.distanceToSquared(to) > 0.01) {
+          lookM.lookAt(to, from, up);
           quat.setFromRotationMatrix(lookM);
         }
-        const rail = isRail(t.routes[route][1]);
         scale.set(rail ? 4 : 3, rail ? 4.5 : 3.5, rail ? 75 : 12);
         pos.y += scale.y / 2 + 1;
         if (n < MAX_VEHICLES) {

@@ -17,10 +17,16 @@ from pathlib import Path
 from pyproj import Transformer
 
 from .common import ROOT, download
+from .network import route_segments
 
 # shortcut: fester Fahrplanjahrgang 2026 (gültig bis 12.12.2026), zum Fahrplanwechsel auf 2027 umstellen
 GTFS_URL = "https://data.opentransportdata.swiss/de/dataset/timetable-2026-gtfs2020/permalink"
 DAYS = 28
+
+
+def is_rail(route_type: int) -> bool:
+    """GTFS route_type 2 und 100–199 (erweitert) sind Bahn, wie im Client."""
+    return route_type == 2 or 100 <= route_type < 200
 
 _to_lv95 = Transformer.from_crs("EPSG:4326", "EPSG:2056", always_xy=True)
 
@@ -95,7 +101,14 @@ def build_transit(cfg: dict, area: dict, out: Path, today: date | None = None) -
             routes.append([r["route_short_name"], int(r["route_type"])])
         trips.append([route_idx[route_id], headsign, mask, [[s, a, d] for _, s, a, d in times[trip_id]]])
 
-    data = {"start_date": start.isoformat(), "days": DAYS, "stops": stops, "routes": routes, "trips": trips}
+    segments = {"rail": set(), "bus": set()}
+    for route, _, _, st in trips:
+        kind = "rail" if is_rail(routes[route][1]) else "bus"
+        segments[kind].update((st[i - 1][0], st[i][0]) for i in range(1, len(st)) if st[i - 1][0] != st[i][0])
+    paths = route_segments(cfg, area["bbox_lv95"], stops, segments)
+
+    data = {"start_date": start.isoformat(), "days": DAYS, "stops": stops, "routes": routes, "trips": trips,
+            "paths": paths}
     (out / "transit.json").write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
     print(f"  {len(routes)} Linien, {len(trips)} Fahrten an {DAYS} Tagen ab {start}")
     return {"transit": "transit.json"}

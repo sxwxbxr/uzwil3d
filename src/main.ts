@@ -91,7 +91,7 @@ interface GeoJSON {
 
 function boundaryLines(area: GeoJSON, m: Manifest, terrain: Terrain): THREE.Group {
   const group = new THREE.Group();
-  const material = new THREE.LineBasicMaterial({ color: 0xffd23f, depthTest: false, transparent: true, opacity: 0.9 });
+  const material = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.9 });
   for (const f of area.features) {
     const polys = f.geometry.type === "Polygon" ? [f.geometry.coordinates as unknown as number[][][]] : f.geometry.coordinates;
     for (const poly of polys) {
