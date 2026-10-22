@@ -174,5 +174,5 @@ def build_buildings(cfg: dict, area: dict, height_min: float, out: Path) -> dict
         total_tris += sum(counts) // 3
 
     print(f"  {count} Gebäude, {total_tris} Dreiecke, {len(tiles)} Kacheln")
-    return {"tiles": tiles, "scale": BUILDING_SCALE, "count": count,
+    return {"tiles": tiles, "scale": BUILDING_SCALE, "count": count, "covered": covered,
             "year": max(y for y, _ in sheets.values())}

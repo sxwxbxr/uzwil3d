@@ -1,10 +1,12 @@
 """ÖV-Fahrplan (GTFS, opentransportdata.swiss) für das Gebiet aufbereiten.
 
 Ausgabe transit.json:
-- stops: [[name, E, N], ...]  (Haltepunkte im Gebiet, LV95)
+- stops: [[name, E, N], ...]  (Haltepunkte im Gebiet und je der Nachbarhalt ausserhalb, LV95)
 - routes: [[Liniennummer, GTFS route_type], ...]
 - trips: [[route, Ziel, Tagesmaske, [[stop, Ankunft s, Abfahrt s], ...]], ...]
   Tagesmaske: Bit i = Fahrt verkehrt am Tag start_date + i
+- paths: {"rail|bus:a-b": [[E, N], ...]}  Abschnitte entlang Strasse/Gleis
+- rail: [[[E, N], ...], ...]  alle Gleise im Gebiet
 """
 
 import csv
@@ -17,11 +19,12 @@ from pathlib import Path
 from pyproj import Transformer
 
 from .common import ROOT, download
-from .network import route_segments
+from .network import rail_lines, route_segments
 
 # shortcut: fester Fahrplanjahrgang 2026 (gültig bis 12.12.2026), zum Fahrplanwechsel auf 2027 umstellen
 GTFS_URL = "https://data.opentransportdata.swiss/de/dataset/timetable-2026-gtfs2020/permalink"
 DAYS = 28
+NEIGHBOUR_BUFFER_M = 8000
 
 
 def is_rail(route_type: int) -> bool:
@@ -49,22 +52,35 @@ def build_transit(cfg: dict, area: dict, out: Path, today: date | None = None) -
     zpath = download(GTFS_URL, ROOT / cfg["cache_dir"] / "gtfs" / f"gtfs-{start:%G-W%V}.zip")
 
     with zipfile.ZipFile(zpath) as z:
-        stops, stop_idx = [], {}
+        # Halte im Gebiet plus Umgebung: Fahrten sollen vom letzten Halt draussen herein- und wieder hinausfahren.
+        b = NEIGHBOUR_BUFFER_M
+        stops, stop_idx, inside = [], {}, set()
         for r in _rows(z, "stops.txt"):
             e, n = _to_lv95.transform(float(r["stop_lon"]), float(r["stop_lat"]))
-            if e0 <= e < e1 and n0 <= n < n1 and r["location_type"] in ("", "0"):
+            if e0 - b <= e < e1 + b and n0 - b <= n < n1 + b and r["location_type"] in ("", "0"):
                 stop_idx[r["stop_id"]] = len(stops)
+                if e0 <= e < e1 and n0 <= n < n1:
+                    inside.add(len(stops))
                 stops.append([r["stop_name"], round(e, 1), round(n, 1)])
-        print(f"  {len(stops)} Haltepunkte im Gebiet")
+        print(f"  {len(inside)} Haltepunkte im Gebiet")
 
-        # stop_times ist mehrere GB gross: nur Halte im Gebiet behalten, Datei bleibt gezippt.
+        # stop_times ist mehrere GB gross: nur Halte in der Umgebung behalten, Datei bleibt gezippt.
         times: dict[str, list] = {}
         for r in _rows(z, "stop_times.txt"):
             s = stop_idx.get(r["stop_id"])
             if s is not None:
                 times.setdefault(r["trip_id"], []).append(
                     (int(r["stop_sequence"]), s, _seconds(r["arrival_time"]), _seconds(r["departure_time"])))
-        times = {t: sorted(v) for t, v in times.items() if len(v) >= 2}
+        clipped = {}
+        for t, v in times.items():
+            v.sort()
+            idx = [i for i, x in enumerate(v) if x[1] in inside]
+            # Nachbarn nur, wenn sie in der Fahrt direkt anschliessen (Sequenznummer lückenlos)
+            lo = idx[0] - 1 if idx and idx[0] > 0 and v[idx[0] - 1][0] == v[idx[0]][0] - 1 else (idx[0] if idx else 0)
+            hi = idx[-1] + 1 if idx and idx[-1] + 1 < len(v) and v[idx[-1] + 1][0] == v[idx[-1]][0] + 1 else (idx[-1] if idx else 0)
+            if idx and hi > lo:
+                clipped[t] = v[lo:hi + 1]
+        times = clipped
 
         trip_meta = {}
         for r in _rows(z, "trips.txt"):
@@ -101,14 +117,22 @@ def build_transit(cfg: dict, area: dict, out: Path, today: date | None = None) -
             routes.append([r["route_short_name"], int(r["route_type"])])
         trips.append([route_idx[route_id], headsign, mask, [[s, a, d] for _, s, a, d in times[trip_id]]])
 
+    # Nur verwendete Halte ausgeben
+    used = sorted({x[0] for tr in trips for x in tr[3]})
+    remap = {s: i for i, s in enumerate(used)}
+    stops = [stops[s] for s in used]
+    for tr in trips:
+        tr[3] = [[remap[x[0]], x[1], x[2]] for x in tr[3]]
+
     segments = {"rail": set(), "bus": set()}
     for route, _, _, st in trips:
         kind = "rail" if is_rail(routes[route][1]) else "bus"
         segments[kind].update((st[i - 1][0], st[i][0]) for i in range(1, len(st)) if st[i - 1][0] != st[i][0])
     paths = route_segments(cfg, area["bbox_lv95"], stops, segments)
+    rail = rail_lines(cfg, area["bbox_lv95"])
 
     data = {"start_date": start.isoformat(), "days": DAYS, "stops": stops, "routes": routes, "trips": trips,
-            "paths": paths}
+            "paths": paths, "rail": rail}
     (out / "transit.json").write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
     print(f"  {len(routes)} Linien, {len(trips)} Fahrten an {DAYS} Tagen ab {start}")
     return {"transit": "transit.json"}

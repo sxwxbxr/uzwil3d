@@ -3,6 +3,7 @@ import { MapControls } from "three/examples/jsm/controls/MapControls.js";
 import { loadBuildings } from "./buildings";
 import { Terrain, toScene, type Manifest } from "./terrain";
 import { loadTransit } from "./transit";
+import { loadTrees } from "./trees";
 
 const DATA_URL = import.meta.env.BASE_URL + "data/";
 
@@ -58,6 +59,9 @@ async function init() {
 
   status.textContent = `Gebäude werden geladen … (${manifest.buildings_count.toLocaleString("de-CH")})`;
   scene.add(await loadBuildings(manifest, DATA_URL));
+
+  status.textContent = "Bäume werden geladen …";
+  scene.add(await loadTrees(manifest, DATA_URL));
 
   status.textContent = "Fahrplan wird geladen …";
   const transit = await loadTransit(manifest, terrain, DATA_URL + manifest.transit);

@@ -8,6 +8,7 @@ interface Transit {
   routes: [string, number][];
   trips: [number, string, number, [number, number, number][]][];
   paths: Record<string, [number, number][]>;
+  rail: [number, number][][];
 }
 
 interface Path {
@@ -25,10 +26,13 @@ export async function loadTransit(m: Manifest, terrain: Terrain, url: string) {
   const t: Transit = await fetch(url).then((r) => r.json());
   const group = new THREE.Group();
 
-  const stopPos = t.stops.map(([, e, n]) => {
+  // Punkte ausserhalb des Geländes (Nachbarhalte) bekommen NaN als Höhe und werden nicht gezeichnet.
+  const toVec = (e: number, n: number, dy: number) => {
     const [x, z] = toScene(m, e, n);
-    return new THREE.Vector3(x, (terrain.heightAt(e, n) ?? 0) + 2, z);
-  });
+    return new THREE.Vector3(x, (terrain.heightAt(e, n) ?? NaN) + dy, z);
+  };
+  const inside = (p: THREE.Vector3) => !Number.isNaN(p.y);
+  const stopPos = t.stops.map(([, e, n]) => toVec(e, n, 2));
 
   const stopMesh = new THREE.InstancedMesh(
     new THREE.CylinderGeometry(4, 4, 6, 12),
@@ -36,23 +40,28 @@ export async function loadTransit(m: Manifest, terrain: Terrain, url: string) {
     stopPos.length,
   );
   const mat = new THREE.Matrix4();
-  stopPos.forEach((p, i) => stopMesh.setMatrixAt(i, mat.makeTranslation(p.x, p.y + 3, p.z)));
+  stopMesh.count = 0;
+  for (const p of stopPos.filter(inside)) stopMesh.setMatrixAt(stopMesh.count++, mat.makeTranslation(p.x, p.y + 3, p.z));
   group.add(stopMesh);
 
   // Abschnitte zwischen zwei Halten folgen Strasse bzw. Gleis (swissTLM3D, in der Pipeline geroutet).
   const paths = new Map<string, Path>();
   const lines = { rail: [] as THREE.Vector3[], bus: [] as THREE.Vector3[] };
   for (const [key, coords] of Object.entries(t.paths)) {
-    const pts = coords.map(([e, n]) => {
-      const [x, z] = toScene(m, e, n);
-      return new THREE.Vector3(x, (terrain.heightAt(e, n) ?? 0) + 1.5, z);
-    });
+    const pts = coords.map(([e, n]) => toVec(e, n, 1.5));
     const len = [0];
     for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + pts[i].distanceTo(pts[i - 1]));
     paths.set(key, { pts, len });
     const out = lines[key.startsWith("rail") ? "rail" : "bus"];
-    for (let i = 1; i < pts.length; i++) out.push(pts[i - 1], pts[i]);
+    for (let i = 1; i < pts.length; i++) if (inside(pts[i - 1]) && inside(pts[i])) out.push(pts[i - 1], pts[i]);
   }
+  // Ganzes Bahnnetz als dunkle Gleise, darüber die befahrenen Abschnitte
+  const tracks: THREE.Vector3[] = [];
+  for (const line of t.rail) {
+    const pts = line.map(([e, n]) => toVec(e, n, 1));
+    for (let i = 1; i < pts.length; i++) if (inside(pts[i - 1]) && inside(pts[i])) tracks.push(pts[i - 1], pts[i]);
+  }
+  group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(tracks), new THREE.LineBasicMaterial({ color: 0x333333 })));
   for (const [kind, color] of [["rail", 0xd32f2f], ["bus", 0xffb300]] as const) {
     group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(lines[kind]), new THREE.LineBasicMaterial({ color })));
   }
@@ -114,7 +123,7 @@ export async function loadTransit(m: Manifest, terrain: Terrain, url: string) {
         }
         scale.set(rail ? 4 : 3, rail ? 4.5 : 3.5, rail ? 75 : 12);
         pos.y += scale.y / 2 + 1;
-        if (n < MAX_VEHICLES) {
+        if (n < MAX_VEHICLES && inside(pos)) {
           vehicles.setMatrixAt(n, mat.compose(pos, quat, scale));
           vehicles.setColorAt(n, rail ? railColor : busColor);
           n++;

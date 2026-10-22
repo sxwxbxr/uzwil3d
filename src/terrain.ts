@@ -6,6 +6,7 @@ export interface TileInfo {
   terrain: string;
   ortho: string | null;
   buildings?: string | null;
+  trees?: string | null;
 }
 
 export interface Manifest {
