@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { MapControls } from "three/examples/jsm/controls/MapControls.js";
+import { loadBuildings } from "./buildings";
 import { Terrain, toScene, type Manifest } from "./terrain";
 
 const DATA_URL = import.meta.env.BASE_URL + "data/";
@@ -28,6 +29,13 @@ controls.minDistance = 50;
 controls.maxDistance = 15000;
 controls.target.set(0, 150, 0);
 
+// Optionale Startansicht per URL: ?cam=x,y,z,zielX,zielY,zielZ (Szenen-Meter)
+const cam = new URLSearchParams(location.search).get("cam")?.split(",").map(Number);
+if (cam?.length === 6 && cam.every(Number.isFinite)) {
+  camera.position.set(cam[0], cam[1], cam[2]);
+  controls.target.set(cam[3], cam[4], cam[5]);
+}
+
 const status = document.getElementById("status")!;
 
 async function init() {
@@ -45,6 +53,9 @@ async function init() {
 
   const area = await fetch(DATA_URL + manifest.area).then((r) => r.json());
   scene.add(boundaryLines(area, manifest, terrain));
+
+  status.textContent = `Gebäude werden geladen … (${manifest.buildings_count.toLocaleString("de-CH")})`;
+  scene.add(await loadBuildings(manifest, DATA_URL));
   status.hidden = true;
 
   // Kamera nicht unter das Gelände fallen lassen.
