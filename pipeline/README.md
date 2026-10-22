@@ -12,6 +12,7 @@ Schritte:
 2. swissALTI3D (2 m) pro 1-km-Kachel, Höhenraster mit `terrain_spacing_m` Abstand
 3. SWISSIMAGE (2 m) pro 1-km-Kachel als JPEG
 4. swissBUILDINGS3D 3.0 (CityGML, LoD2, neuester Jahrgang pro LK25-Blatt) als Dreiecke pro 1-km-Kachel, Format in `buildings.py`
+5. ÖV-Fahrplan (GTFS von opentransportdata.swiss, ohne API-Key): Haltepunkte im Gebiet und Fahrten der nächsten 28 Tage als `transit.json`
 
 Selbstcheck: `python -I pipeline/test_buildings.py`
 

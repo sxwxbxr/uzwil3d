@@ -39,7 +39,8 @@ def build_transit(cfg: dict, area: dict, out: Path, today: date | None = None) -
     e0, n0, e1, n1 = area["bbox_lv95"]
     start = today or datetime.now().date()
     days = [start + timedelta(i) for i in range(DAYS)]
-    zpath = download(GTFS_URL, ROOT / cfg["cache_dir"] / "gtfs" / "gtfs.zip")
+    # Pro Kalenderwoche neu laden, damit der Cache in CI keinen veralteten Fahrplan liefert.
+    zpath = download(GTFS_URL, ROOT / cfg["cache_dir"] / "gtfs" / f"gtfs-{start:%G-W%V}.zip")
 
     with zipfile.ZipFile(zpath) as z:
         stops, stop_idx = [], {}

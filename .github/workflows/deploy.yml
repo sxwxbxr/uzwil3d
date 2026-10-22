@@ -2,6 +2,8 @@ name: Vorschau
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1" # wöchentlich, damit das 28-Tage-Fahrplanfenster aktuell bleibt
   push:
     branches: [main]
 
