@@ -4,7 +4,7 @@ export interface TileInfo {
   e: number;
   n: number;
   terrain: string;
-  ortho: string;
+  ortho: string | null;
   buildings?: string | null;
 }
 
@@ -50,7 +50,7 @@ export class Terrain {
       m.tiles.map(async (info) => {
         const [buf, tex] = await Promise.all([
           fetch(this.baseUrl + info.terrain).then((r) => r.arrayBuffer()),
-          loader.loadAsync(this.baseUrl + info.ortho),
+          info.ortho ? loader.loadAsync(this.baseUrl + info.ortho) : null,
         ]);
         const heights = decodeHeights(buf);
         this.tiles.set(key(info.e, info.n), { info, heights });
@@ -60,7 +60,7 @@ export class Terrain {
     );
   }
 
-  private buildMesh(info: TileInfo, heights: Float32Array, tex: THREE.Texture): THREE.Mesh {
+  private buildMesh(info: TileInfo, heights: Float32Array, tex: THREE.Texture | null): THREE.Mesh {
     const m = this.manifest;
     const s = m.terrain_samples;
     const geo = new THREE.PlaneGeometry(m.tile_size_m, m.tile_size_m, s - 1, s - 1);
@@ -71,9 +71,11 @@ export class Terrain {
     geo.computeVertexNormals();
     geo.computeBoundingSphere();
 
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 8;
-    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex }));
+    if (tex) {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+    }
+    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial(tex ? { map: tex } : { color: 0x8a9a7a }));
     const half = m.tile_size_m / 2;
     const [x, z] = toScene(m, info.e + half, info.n + half);
     mesh.position.set(x, 0, z);
