@@ -51,7 +51,7 @@ export class Terrain {
     await Promise.all(
       m.tiles.map(async (info) => {
         const [buf, tex] = await Promise.all([
-          fetch(this.baseUrl + info.terrain).then((r) => r.arrayBuffer()),
+          fetch(this.baseUrl + info.terrain).then(okBuffer),
           info.ortho ? loader.loadAsync(this.baseUrl + info.ortho) : null,
         ]);
         const heights = decodeHeights(buf);
@@ -108,6 +108,12 @@ export class Terrain {
       at(r0 + 1, c0 + 1) * fc * fr
     );
   }
+}
+
+/** arrayBuffer() mit Statusprüfung, sonst würde eine 404-Seite als Höhen gelesen. */
+export function okBuffer(r: Response): Promise<ArrayBuffer> {
+  if (!r.ok) throw new Error(`${r.url}: HTTP ${r.status}`);
+  return r.arrayBuffer();
 }
 
 function key(e: number, n: number): string {

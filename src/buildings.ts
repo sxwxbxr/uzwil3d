@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { toScene, type Manifest } from "./terrain";
+import { okBuffer, toScene, type Manifest } from "./terrain";
 
 // Die Flächenorientierung in swissBUILDINGS3D ist nicht einheitlich, daher beidseitig.
 const WALL = new THREE.MeshLambertMaterial({ color: 0xe8e2d6, side: THREE.DoubleSide });
@@ -13,7 +13,7 @@ export async function loadBuildings(m: Manifest, baseUrl: string): Promise<THREE
     m.tiles
       .filter((t) => t.buildings)
       .map(async (t) => {
-        const buf = await fetch(baseUrl + t.buildings).then((r) => r.arrayBuffer());
+        const buf = await fetch(baseUrl + t.buildings).then(okBuffer);
         const [walls, roofs] = new Uint32Array(buf, 0, 2);
         const raw = new Int16Array(buf, 8, (walls + roofs) * 3);
         const pos = new Float32Array(raw.length);

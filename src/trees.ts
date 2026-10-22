@@ -1,13 +1,13 @@
 import * as THREE from "three";
-import { toScene, type Manifest } from "./terrain";
+import { okBuffer, toScene, type Manifest } from "./terrain";
 
 /** Bäume aus der Pipeline (pipeline/uzwil3d_pipeline/trees.py) als ein InstancedMesh. */
 export async function loadTrees(m: Manifest, baseUrl: string): Promise<THREE.InstancedMesh> {
   const tiles = m.tiles.filter((t) => t.trees);
-  const bufs = await Promise.all(tiles.map((t) => fetch(baseUrl + t.trees).then((r) => r.arrayBuffer())));
+  const bufs = await Promise.all(tiles.map((t) => fetch(baseUrl + t.trees).then(okBuffer)));
   const total = bufs.reduce((s, b) => s + b.byteLength / 8, 0);
 
-  const geo = new THREE.ConeGeometry(1, 1, 7);
+  const geo = new THREE.ConeGeometry(1, 1, 5);
   geo.translate(0, 0.5, 0);
   const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial(), total);
   const mat = new THREE.Matrix4();

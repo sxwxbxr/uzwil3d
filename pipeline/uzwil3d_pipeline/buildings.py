@@ -86,6 +86,14 @@ def _parse(gml: Path):
             yield {k: np.concatenate(v) if v else np.empty((0, 3, 3)) for k, v in tris.items()}
 
 
+def _mark(covered: np.ndarray, roof: np.ndarray, e0: int, n0: int) -> None:
+    """Bounding Box jedes Dachdreiecks im 1-m-Raster als bebaut markieren."""
+    lo = np.floor(roof[:, :, :2].min(axis=1)).astype(int) - (e0, n0)
+    hi = np.ceil(roof[:, :, :2].max(axis=1)).astype(int) - (e0, n0)
+    for (a, c), (b, d) in zip(lo.clip(0), hi.clip(0)):
+        covered[c:d, a:b] = True
+
+
 def _ground(cfg: dict, out: Path, bbox, height_min: float):
     """Geländehöhe (m ü. M.) aus den bereits geschriebenen Terrain-Kacheln, nächster Stützpunkt."""
     ts, sp = cfg["tile_size_m"], cfg["terrain_spacing_m"]
@@ -139,10 +147,7 @@ def build_buildings(cfg: dict, area: dict, height_min: float, out: Path) -> dict
     covered = np.zeros((n1 - n0, e1 - e0), bool)
     for parts in per_tile.values():
         for roof in parts["roof"]:
-            lo = np.floor(roof[:, :, :2].min(axis=1)).astype(int) - (e0, n0)
-            hi = np.ceil(roof[:, :, :2].max(axis=1)).astype(int) - (e0, n0)
-            for (a, c), (b, d) in zip(lo.clip(0), hi.clip(0)):
-                covered[c:d, a:b] = True
+            _mark(covered, roof, e0, n0)
     extra = supplement(cfg, bbox, covered, _ground(cfg, out, bbox, height_min))
     for b in extra:
         ce, cn = b["roof"][:, :, 0].mean(), b["roof"][:, :, 1].mean()
@@ -150,6 +155,7 @@ def build_buildings(cfg: dict, area: dict, height_min: float, out: Path) -> dict
         if key in per_tile or (e0 <= ce < e1 and n0 <= cn < n1):
             per_tile[key]["wall"].append(b["wall"])
             per_tile[key]["roof"].append(b["roof"])
+        _mark(covered, b["roof"], e0, n0)
     count += len(extra)
     print(f"  {len(extra)} Gebäude aus amtlicher Vermessung + GWR ergänzt")
 

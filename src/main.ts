@@ -8,7 +8,8 @@ import { loadTrees } from "./trees";
 const DATA_URL = import.meta.env.BASE_URL + "data/";
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Auf Touch-Geräten weniger Pixel rendern, sonst wird es mit Bäumen und Gebäuden zäh.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, matchMedia("(pointer: coarse)").matches ? 1.25 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
@@ -19,7 +20,8 @@ scene.fog = new THREE.Fog(0x9cc3e6, 8000, 20000);
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 40000);
 camera.position.set(-1500, 3500, 6500);
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x556655, 1.6));
+const sky = new THREE.HemisphereLight(0xffffff, 0x556655, 1.6);
+scene.add(sky);
 const sun = new THREE.DirectionalLight(0xfff4e0, 1.6);
 sun.position.set(-3000, 5000, 2000);
 scene.add(sun);
@@ -55,30 +57,51 @@ async function init() {
   });
 
   const area = await fetch(DATA_URL + manifest.area).then((r) => r.json());
-  scene.add(boundaryLines(area, manifest, terrain));
+  const boundaries = boundaryLines(area, manifest, terrain);
+  scene.add(boundaries);
 
   status.textContent = `Gebäude werden geladen … (${manifest.buildings_count.toLocaleString("de-CH")})`;
-  scene.add(await loadBuildings(manifest, DATA_URL));
+  const buildings = await loadBuildings(manifest, DATA_URL);
+  scene.add(buildings);
 
   status.textContent = "Bäume werden geladen …";
-  scene.add(await loadTrees(manifest, DATA_URL));
+  const trees = await loadTrees(manifest, DATA_URL);
+  scene.add(trees);
 
   status.textContent = "Fahrplan wird geladen …";
   const transit = await loadTransit(manifest, terrain, DATA_URL + manifest.transit);
   scene.add(transit.group);
   status.hidden = true;
 
-  // Simulierte Uhr, Startzeit per ?t=HH:MM (heute), sonst jetzt.
+  const layers: Record<string, THREE.Object3D> = { buildings, trees, transit: transit.group, boundaries };
+  for (const box of document.querySelectorAll<HTMLInputElement>("#panel input[data-layer]")) {
+    box.addEventListener("change", () => (layers[box.dataset.layer!].visible = box.checked));
+  }
+
+  // Simulierte Uhr: Startzeit per ?t=HH:MM (heute), sonst jetzt; Zeitraffer über die Knöpfe.
   const clock = document.getElementById("clock")!;
   const [hh, mm] = (params.get("t") ?? "").split(":").map(Number);
-  const offset = Number.isFinite(hh) && Number.isFinite(mm) ? new Date().setHours(hh, mm, 0, 0) - Date.now() : 0;
+  let sim = Number.isFinite(hh) && Number.isFinite(mm) ? new Date().setHours(hh, mm, 0, 0) : Date.now();
+  let speed = 1;
+  let last = performance.now();
+  for (const btn of document.querySelectorAll<HTMLButtonElement>("#panel button[data-speed]")) {
+    btn.addEventListener("click", () => {
+      speed = Number(btn.dataset.speed);
+      document.querySelectorAll("#panel button[data-speed]").forEach((b) => b.classList.toggle("on", b === btn));
+    });
+  }
   const tick = () => {
-    const now = new Date(Date.now() + offset);
+    const t = performance.now();
+    sim += (t - last) * speed;
+    last = t;
+    const now = new Date(sim);
     const n = transit.update(now);
     clock.textContent = `${now.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })} · ${n} Fahrzeuge unterwegs`;
   };
   tick();
-  setInterval(tick, 200);
+  setInterval(tick, 100);
+
+  document.getElementById("night")!.addEventListener("change", (e) => setNight((e.target as HTMLInputElement).checked));
 
   // Kamera nicht unter das Gelände fallen lassen.
   controls.addEventListener("change", () => {
@@ -110,6 +133,16 @@ function boundaryLines(area: GeoJSON, m: Manifest, terrain: Terrain): THREE.Grou
   }
   group.renderOrder = 1;
   return group;
+}
+
+const DAY = { sky: 0x9cc3e6, hemi: 1.6, sun: 1.6 };
+const NIGHT = { sky: 0x0b1530, hemi: 0.25, sun: 0.08 };
+function setNight(on: boolean) {
+  const c = on ? NIGHT : DAY;
+  (scene.background as THREE.Color).set(c.sky);
+  scene.fog!.color.set(c.sky);
+  sky.intensity = c.hemi;
+  sun.intensity = c.sun;
 }
 
 window.addEventListener("resize", () => {
