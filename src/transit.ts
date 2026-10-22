@@ -50,7 +50,8 @@ export async function loadTransit(m: Manifest, terrain: Terrain, url: string) {
   for (const [key, coords] of Object.entries(t.paths)) {
     const pts = coords.map(([e, n]) => toVec(e, n, 1.5));
     const len = [0];
-    for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + pts[i].distanceTo(pts[i - 1]));
+    // horizontal messen: Punkte ausserhalb haben y = NaN, die Länge soll trotzdem stimmen
+    for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
     paths.set(key, { pts, len });
     const out = lines[key.startsWith("rail") ? "rail" : "bus"];
     for (let i = 1; i < pts.length; i++) if (inside(pts[i - 1]) && inside(pts[i])) out.push(pts[i - 1], pts[i]);
@@ -84,6 +85,8 @@ export async function loadTransit(m: Manifest, terrain: Terrain, url: string) {
     MAX_VEHICLES,
   );
   vehicles.count = 0;
+  // Instanzen ändern sich jeden Tick, die einmal berechnete Bounding-Sphere wäre falsch
+  vehicles.frustumCulled = false;
   group.add(vehicles);
 
   const startMs = new Date(t.start_date + "T00:00:00").getTime();
@@ -106,7 +109,8 @@ export async function loadTransit(m: Manifest, terrain: Terrain, url: string) {
     let n = 0;
     for (const [route, , mask, stops] of t.trips) {
       // Fahrten des Vortags laufen mit Zeiten über 24:00 weiter.
-      for (const [d, s] of [[day, sec], [day - 1, sec + DAY]]) {
+      // Vortag für Fahrten nach 24:00; Tag 6 ist derselbe Wochentag wie Tag -1
+      for (const [d, s] of [[day, sec], [day > 0 ? day - 1 : 6, sec + DAY]]) {
         if (d < 0 || !(mask & (1 << d)) || s < stops[0][2] || s > stops[stops.length - 1][1]) continue;
         let i = 1;
         while (stops[i][1] < s) i++;
@@ -117,6 +121,8 @@ export async function loadTransit(m: Manifest, terrain: Terrain, url: string) {
         const path = paths.get(`${rail ? "rail" : "bus"}:${a}-${b}`);
         const [from, to] = path ? along(path, f, pos) : [stopPos[a], stopPos[b]];
         if (!path) pos.lerpVectors(from, to, f);
+        // Höhe am Punkt selbst, damit Abschnitte über den Geländerand nur draussen verschwinden
+        pos.y = (terrain.heightAt(pos.x + m.origin_lv95[0], -pos.z + m.origin_lv95[1]) ?? NaN) + 1.5;
         if (from.distanceToSquared(to) > 0.01) {
           lookM.lookAt(to, from, up);
           quat.setFromRotationMatrix(lookM);
