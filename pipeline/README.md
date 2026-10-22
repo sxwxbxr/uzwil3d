@@ -1,3 +1,19 @@
 # Daten-Pipeline
 
-Hier entstehen die Skripte, die Rohdaten laden (swissALTI3D, swissBUILDINGS3D, SWISSIMAGE, swissTLM3D) und auf das Zielgebiet zuschneiden. Ausgabe landet als statische Kacheln in `public/`. Geplant ab Phase 1.
+Lädt echte Geodaten von swisstopo und schreibt statische Assets nach `public/data/`.
+
+```sh
+pip install -r pipeline/requirements.txt
+python pipeline/run.py
+```
+
+Schritte:
+1. Gemeindegrenzen (swissBOUNDARIES3D) für die Gemeinden in `config.json`, daraus die Bounding Box (mit Puffer, auf 1 km gerundet)
+2. swissALTI3D (2 m) pro 1-km-Kachel, Höhenraster mit `terrain_spacing_m` Abstand
+3. SWISSIMAGE (2 m) pro 1-km-Kachel als JPEG
+
+Rohdaten werden in `data/raw/` zwischengespeichert. In CI läuft die Pipeline über `.github/workflows/pipeline.yml` und legt das Ergebnis als Artefakt `uzwil3d-data` ab.
+
+## Ausgabeformat
+
+`manifest.json` beschreibt Gebiet, Ursprung (LV95) und Kacheln. Terrain-Kacheln sind Uint16 little-endian, `terrain_samples`² Werte, Höhe in cm über `height_min`, Zeile 0 im Norden.

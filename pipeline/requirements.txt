@@ -1,0 +1,6 @@
+numpy>=2.0
+pillow>=10.0
+pyproj>=3.6
+rasterio>=1.4
+requests>=2.31
+shapely>=2.0
