@@ -11,7 +11,9 @@ Schritte:
 1. Gemeindegrenzen (swissBOUNDARIES3D) für die Gemeinden in `config.json`, daraus die Bounding Box (mit Puffer, auf 1 km gerundet)
 2. swissALTI3D (2 m) pro 1-km-Kachel, Höhenraster mit `terrain_spacing_m` Abstand
 3. SWISSIMAGE (2 m) pro 1-km-Kachel als JPEG
-4. swissBUILDINGS3D 3.0 (CityGML, LoD2, neuester Jahrgang pro LK25-Blatt) als Dreiecke pro 1-km-Kachel, Format in `buildings.py`
+4. swissBUILDINGS3D 3.0 (CityGML, LoD2, neuester Jahrgang pro LK25-Blatt) als Dreiecke pro 1-km-Kachel, Format in `buildings.py`; fehlende oder neuere Gebäude aus amtlicher Vermessung (Grundriss) und GWR (Geschosse), siehe `av.py`
+5. Bäume aus swissSURFACE3D minus swissALTI3D (höchster Vegetationspunkt pro 8-m-Zelle), siehe `trees.py`
+6. ÖV-Fahrplan (GTFS von opentransportdata.swiss, ohne API-Key): Haltepunkte im Gebiet und Fahrten der nächsten 28 Tage als `transit.json`, Abschnitte über Strassen- und Bahnnetz von swissTLM3D geroutet (`network.py`)
 
 Selbstcheck: `python -I pipeline/test_buildings.py`
 

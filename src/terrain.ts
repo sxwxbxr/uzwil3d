@@ -6,6 +6,7 @@ export interface TileInfo {
   terrain: string;
   ortho: string | null;
   buildings?: string | null;
+  trees?: string | null;
 }
 
 export interface Manifest {
@@ -19,6 +20,7 @@ export interface Manifest {
   height_max: number;
   buildings_scale: number;
   buildings_count: number;
+  transit: string;
   tiles: TileInfo[];
   attribution: string[];
 }

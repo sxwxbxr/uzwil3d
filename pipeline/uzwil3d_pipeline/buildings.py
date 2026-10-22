@@ -17,6 +17,7 @@ from pathlib import Path
 import mapbox_earcut as earcut
 import numpy as np
 
+from .av import supplement
 from .common import ROOT, download
 from .stac import items
 
@@ -85,6 +86,27 @@ def _parse(gml: Path):
             yield {k: np.concatenate(v) if v else np.empty((0, 3, 3)) for k, v in tris.items()}
 
 
+def _ground(cfg: dict, out: Path, bbox, height_min: float):
+    """Geländehöhe (m ü. M.) aus den bereits geschriebenen Terrain-Kacheln, nächster Stützpunkt."""
+    ts, sp = cfg["tile_size_m"], cfg["terrain_spacing_m"]
+    s = ts // sp + 1
+    grids = {}
+
+    def h(e: float, n: float) -> float:
+        k = (int(e // ts), int(n // ts))
+        if k not in grids:
+            f = out / "terrain" / f"{k[0]}_{k[1]}.bin"
+            grids[k] = np.frombuffer(f.read_bytes(), "<u2").reshape(s, s) if f.exists() else None
+        g = grids[k]
+        if g is None:
+            return height_min
+        col = round((e - k[0] * ts) / sp)
+        row = round((k[1] * ts + ts - n) / sp)
+        return height_min + g[min(row, s - 1), min(col, s - 1)] / 100
+
+    return h
+
+
 def build_buildings(cfg: dict, area: dict, height_min: float, out: Path) -> dict:
     bbox = area["bbox_lv95"]
     e0, n0, e1, n1 = bbox
@@ -113,6 +135,24 @@ def build_buildings(cfg: dict, area: dict, height_min: float, out: Path) -> dict
                 per_tile[key]["roof"].append(b["roof"])
                 count += 1
 
+    # Von swissBUILDINGS3D bedeckte Fläche (1 m, Bounding Box je Dachdreieck reicht dafür)
+    covered = np.zeros((n1 - n0, e1 - e0), bool)
+    for parts in per_tile.values():
+        for roof in parts["roof"]:
+            lo = np.floor(roof[:, :, :2].min(axis=1)).astype(int) - (e0, n0)
+            hi = np.ceil(roof[:, :, :2].max(axis=1)).astype(int) - (e0, n0)
+            for (a, c), (b, d) in zip(lo.clip(0), hi.clip(0)):
+                covered[c:d, a:b] = True
+    extra = supplement(cfg, bbox, covered, _ground(cfg, out, bbox, height_min))
+    for b in extra:
+        ce, cn = b["roof"][:, :, 0].mean(), b["roof"][:, :, 1].mean()
+        key = (int(ce // ts), int(cn // ts))
+        if key in per_tile or (e0 <= ce < e1 and n0 <= cn < n1):
+            per_tile[key]["wall"].append(b["wall"])
+            per_tile[key]["roof"].append(b["roof"])
+    count += len(extra)
+    print(f"  {len(extra)} Gebäude aus amtlicher Vermessung + GWR ergänzt")
+
     (out / "buildings").mkdir(parents=True, exist_ok=True)
     tiles = {}
     total_tris = 0
@@ -134,5 +174,5 @@ def build_buildings(cfg: dict, area: dict, height_min: float, out: Path) -> dict
         total_tris += sum(counts) // 3
 
     print(f"  {count} Gebäude, {total_tris} Dreiecke, {len(tiles)} Kacheln")
-    return {"tiles": tiles, "scale": BUILDING_SCALE, "count": count,
+    return {"tiles": tiles, "scale": BUILDING_SCALE, "count": count, "covered": covered,
             "year": max(y for y, _ in sheets.values())}
