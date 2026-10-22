@@ -9,18 +9,21 @@
       canvas { display: block; }
       #status { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #fff; }
       #clock { position: fixed; top: 16px; right: 16px; padding: 6px 12px; border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #fff; font-variant-numeric: tabular-nums; }
+      #weather { position: fixed; top: 52px; right: 16px; padding: 6px 12px; border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #fff; }
+      #weather:empty { display: none; }
       #panel { position: fixed; top: 16px; left: 16px; padding: 8px 12px; border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #fff; display: grid; gap: 4px; }
       #panel label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
       #panel .speed { display: flex; gap: 4px; margin-top: 4px; }
       #panel button { flex: 1; padding: 3px 6px; border: 1px solid #fff6; border-radius: 4px; background: none; color: #fff; font: inherit; cursor: pointer; }
       #panel button.on { background: #fff; color: #000; }
-      @media (max-width: 600px) { #status { top: auto; bottom: 64px; } #clock { top: 8px; right: 8px; } #panel { top: 8px; left: 8px; } #attribution { font-size: 9px; } }
+      @media (max-width: 600px) { #status { top: auto; bottom: 64px; } #clock { top: 8px; right: 8px; } #weather { top: 44px; right: 8px; } #panel { top: 8px; left: 8px; } #attribution { font-size: 9px; } }
       #attribution { position: fixed; right: 0; bottom: 0; padding: 3px 8px; background: rgba(255, 255, 255, 0.75); color: #222; font-size: 11px; }
     </style>
   </head>
   <body>
     <div id="status">Daten werden geladen …</div>
     <div id="clock"></div>
+    <div id="weather"></div>
     <div id="panel">
       <label><input type="checkbox" data-layer="buildings" checked /> Gebäude</label>
       <label><input type="checkbox" data-layer="trees" checked /> Bäume</label>

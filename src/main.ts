@@ -4,6 +4,7 @@ import { loadBuildings } from "./buildings";
 import { Terrain, toScene, type Manifest } from "./terrain";
 import { loadTransit } from "./transit";
 import { loadTrees } from "./trees";
+import { Weather } from "./weather";
 
 const DATA_URL = import.meta.env.BASE_URL + "data/";
 
@@ -14,8 +15,6 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x9cc3e6);
-scene.fog = new THREE.Fog(0x9cc3e6, 8000, 20000);
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 40000);
 camera.position.set(-1500, 3500, 6500);
@@ -41,6 +40,9 @@ if (cam?.length === 6 && cam.every(Number.isFinite)) {
   controls.target.set(cam[3], cam[4], cam[5]);
 }
 
+const wParam = params.get("wetter");
+const weather = new Weather(scene, sun, sky, camera, wParam === null ? undefined : Number(wParam));
+
 const status = document.getElementById("status")!;
 
 async function init() {
@@ -48,7 +50,7 @@ async function init() {
     if (!r.ok) throw new Error(`manifest.json: HTTP ${r.status}`);
     return r.json();
   });
-  document.getElementById("attribution")!.textContent = "© " + manifest.attribution.join(", ");
+  document.getElementById("attribution")!.textContent = "© " + [...manifest.attribution, "Open-Meteo.com (Wetter)"].join(", ");
 
   const terrain = new Terrain(manifest, DATA_URL);
   scene.add(terrain.group);
@@ -96,12 +98,12 @@ async function init() {
     last = t;
     const now = new Date(sim);
     const n = transit.update(now);
+    simNow = now;
     clock.textContent = `${now.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })} · ${n} Fahrzeuge unterwegs`;
   };
   tick();
   setInterval(tick, 100);
 
-  document.getElementById("night")!.addEventListener("change", (e) => setNight((e.target as HTMLInputElement).checked));
 
   // Kamera nicht unter das Gelände fallen lassen.
   controls.addEventListener("change", () => {
@@ -135,24 +137,19 @@ function boundaryLines(area: GeoJSON, m: Manifest, terrain: Terrain): THREE.Grou
   return group;
 }
 
-const DAY = { sky: 0x9cc3e6, hemi: 1.6, sun: 1.6 };
-const NIGHT = { sky: 0x0b1530, hemi: 0.25, sun: 0.08 };
-function setNight(on: boolean) {
-  const c = on ? NIGHT : DAY;
-  (scene.background as THREE.Color).set(c.sky);
-  scene.fog!.color.set(c.sky);
-  sky.intensity = c.hemi;
-  sun.intensity = c.sun;
-}
-
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-renderer.setAnimationLoop(() => {
+const nightBox = document.getElementById("night") as HTMLInputElement;
+let simNow = new Date();
+let lastFrame = performance.now();
+renderer.setAnimationLoop((t) => {
   controls.update();
+  weather.update(simNow, nightBox.checked, Math.min((t - lastFrame) / 1000, 0.5));
+  lastFrame = t;
   renderer.render(scene, camera);
 });
 
