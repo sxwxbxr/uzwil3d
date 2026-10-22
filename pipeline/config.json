@@ -1,0 +1,9 @@
+{
+  "municipalities": ["Uzwil", "Oberuzwil"],
+  "buffer_m": 500,
+  "tile_size_m": 1000,
+  "terrain_spacing_m": 5,
+  "ortho_gsd_m": 2.0,
+  "output_dir": "public/data",
+  "cache_dir": "data/raw"
+}
